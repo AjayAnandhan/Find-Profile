@@ -3,6 +3,8 @@ import pickle
 import faiss
 import fitz
 import numpy as np
+import sqlite3
+import re
 
 from docx import Document
 from sentence_transformers import SentenceTransformer
@@ -14,6 +16,7 @@ from config import RESUME_FOLDER
 # Readers
 
 # ----------------------------
+
 
 def read_pdf(path):
 
@@ -28,13 +31,52 @@ def read_pdf(path):
 
     return text
 
+
 def read_docx(path):
-    
+
     doc = Document(path)
-    return "\n".join(
-    p.text for p in doc.paragraphs
-)
-    
+    return "\n".join(p.text for p in doc.paragraphs)
+
+
+def extract_email(text):
+
+    match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+
+    return match.group(0) if match else ""
+
+
+def extract_phone(text):
+
+    match = re.search(r"(\+?\d[\d\-\(\)\s]{8,})", text)
+
+    return match.group(0).strip() if match else ""
+
+
+def extract_name(text):
+
+    lines = text.splitlines()
+
+    for line in lines:
+        line = line.strip()
+
+        if len(line) > 3:
+            return line
+
+    return ""
+
+
+def extract_experience(text):
+
+    patterns = [r"(\d+)\+?\s+years", r"(\d+)\+?\s+yrs"]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+
+        if match:
+            return float(match.group(1))
+
+    return 0
+
 
 # ----------------------------
 
@@ -42,18 +84,12 @@ def read_docx(path):
 
 # ----------------------------
 
-index = faiss.read_index(
-"resume_index.faiss"
-)
+index = faiss.read_index("resume_index.faiss")
 
-with open(
-"resume_metadata.pkl",
-"rb"
-) as f: stored_paths = pickle.load(f)
+with open("resume_metadata.pkl", "rb") as f:
+    stored_paths = pickle.load(f)
 
-stored_paths = set(
-stored_paths
-)
+stored_paths = set(stored_paths)
 
 # ----------------------------
 
@@ -63,35 +99,33 @@ stored_paths
 
 new_files = []
 
-for root, dirs, files in os.walk(
-RESUME_FOLDER
-):
+for root, dirs, files in os.walk(RESUME_FOLDER):
     for file in files:
-        if not file.lower().endswith(
-        (".pdf", ".docx")
-    ):
+        print(f"Checking: {file}")
+
+        if file.startswith("~"):
             continue
 
-    filepath = os.path.join(
-        root,
-        file
-    )
+        if file.startswith("~$"):
+            continue
 
-    if filepath not in stored_paths:
+        if not file.lower().endswith((".pdf", ".docx")):
+            continue
 
-        new_files.append(
-            filepath
-        )
+        filepath = os.path.join(root, file)
 
-print(
-f"Found {len(new_files)} new resumes"
-)
+        if filepath not in stored_paths:
+            new_files.append(filepath)
 
-if len(new_files) == 0: print(
-    "No new resumes found."
-)
+print(f"Found {len(new_files)} new resumes")
 
-exit()
+for file in new_files:
+    print(file)
+
+if len(new_files) == 0:
+    print("No new resumes found.")
+
+    exit()
 
 # ----------------------------
 
@@ -99,9 +133,7 @@ exit()
 
 # ----------------------------
 
-model = SentenceTransformer(
-"BAAI/bge-small-en-v1.5"
-)
+model = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
 # ----------------------------
 
@@ -109,39 +141,62 @@ model = SentenceTransformer(
 
 # ----------------------------
 
+
+conn = sqlite3.connect("candidate.db")
+
+cursor = conn.cursor()
 documents = []
 
 for filepath in new_files:
-
     try:
-
-        if filepath.lower().endswith(
-            ".pdf"
-        ):
-
-            text = read_pdf(
-                filepath
-            )
+        if filepath.lower().endswith(".pdf"):
+            text = read_pdf(filepath)
 
         else:
+            text = read_docx(filepath)
 
-            text = read_docx(
-                filepath
+        documents.append(text)
+
+        name = extract_name(text)
+
+        email = extract_email(text)
+
+        phone = extract_phone(text)
+
+        experience = extract_experience(text)
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO candidates
+            (
+                name,
+                email,
+                phone,
+                experience,
+                filename,
+                filepath,
+                resume_text
             )
-
-        documents.append(
-            text
+            VALUES
+            (
+                ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                name,
+                email,
+                phone,
+                experience,
+                os.path.basename(filepath),
+                filepath,
+                text,
+            ),
         )
 
-        print(
-            f"Loaded: {os.path.basename(filepath)}"
-        )
+        print(f"Loaded: {os.path.basename(filepath)}")
 
     except Exception as e:
-
-        print(
-            f"Error: {filepath}"
-        )
+        print(f"Error: {filepath}")
 
         print(e)
 
@@ -151,14 +206,9 @@ for filepath in new_files:
 
 # ----------------------------
 
-embeddings = model.encode(
-documents,
-convert_to_numpy=True
-)
+embeddings = model.encode(documents, convert_to_numpy=True)
 
-embeddings = embeddings.astype(
-np.float32
-)
+embeddings = embeddings.astype(np.float32)
 
 # ----------------------------
 
@@ -166,14 +216,9 @@ np.float32
 
 # ----------------------------
 
-index.add(
-embeddings
-)
+index.add(embeddings)
 
-faiss.write_index(
-index,
-"resume_index.faiss"
-)
+faiss.write_index(index, "resume_index.faiss")
 
 # ----------------------------
 
@@ -181,27 +226,17 @@ index,
 
 # ----------------------------
 
-stored_paths = list(
-stored_paths
-)
+stored_paths = list(stored_paths)
 
-stored_paths.extend(
-new_files
-)
+stored_paths.extend(new_files)
 
-with open(
-"resume_metadata.pkl",
-"wb"
-) as f:
-    pickle.dump(
-    stored_paths,
-    f
-)
+with open("resume_metadata.pkl", "wb") as f:
+    pickle.dump(stored_paths, f)
 
-print(
-f"Added {len(new_files)} resumes."
-)
+conn.commit()
 
-print(
-"FAISS Updated Successfully."
-)
+conn.close()
+
+print(f"Added {len(new_files)} resumes.")
+
+print("FAISS Updated Successfully.")
