@@ -1,0 +1,59 @@
+# Virtual Environment
+venv/
+.venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# VS Code
+.vscode/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Database
+*.db
+candidate.db
+
+# FAISS Index
+*.faiss
+resume_index.faiss
+
+# Pickle Files
+*.pkl
+resume_metadata.pkl
+
+# Logs
+*.log
+
+# Environment Variables
+.env
+
+# HuggingFace Cache
+.cache/
+huggingface/
+
+# Ollama Cache (optional)
+ollama/
+
+# Generated Files
+files.txt
+structure.txt
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Temporary Files
+*.tmp
+*.temp
+
+# Resume Repository
+resumes/
+
+# Data folders (generated)
+data/
+index/
