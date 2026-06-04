@@ -4,6 +4,7 @@ import fitz
 import sqlite3
 
 from docx import Document
+from config import RESUME_FOLDER
 
 # ----------------------------
 # Resume Readers
@@ -17,6 +18,8 @@ def read_pdf(path):
 
     for page in pdf:
         text += page.get_text()
+
+    pdf.close()
 
     return text
 
@@ -101,12 +104,14 @@ cursor = conn.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS candidates
 (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     email TEXT,
     phone TEXT,
     experience REAL,
-    filename TEXT
+    filename TEXT,
+    filepath TEXT UNIQUE,
+    resume_text TEXT
 )
 """)
 
@@ -114,21 +119,27 @@ CREATE TABLE IF NOT EXISTS candidates
 # Process Resumes
 # ----------------------------
 
-resume_folder = "resumes"
+resume_folder = RESUME_FOLDER
 
-for file in os.listdir(resume_folder):
+for root, dirs, files in os.walk(
+    RESUME_FOLDER
+):
 
-    filepath = os.path.join(
-        resume_folder,
-        file
-    )
+    for file in files:
+
+        filepath = os.path.join(
+            root,
+            file
+        )
 
     try:
 
         if file.lower().endswith(".pdf"):
+
             text = read_pdf(filepath)
 
         elif file.lower().endswith(".docx"):
+
             text = read_docx(filepath)
 
         else:
@@ -141,37 +152,40 @@ for file in os.listdir(resume_folder):
 
         cursor.execute(
             """
-            INSERT INTO candidates
-            (
-                name,
-                email,
-                phone,
-                experience,
-                filename
-            )
-            VALUES
-            (
-                ?, ?, ?, ?, ?
-            )
-            """,
-            (
-                name,
-                email,
-                phone,
-                experience,
-                file
-            )
+INSERT INTO candidates
+(
+    name,
+    email,
+    phone,
+    experience,
+    filename,
+    filepath,
+    resume_text
+)
+VALUES
+(
+    ?, ?, ?, ?, ?, ?, ?
+)
+""",
+(
+    name,
+    email,
+    phone,
+    experience,
+    file,
+    filepath,
+    text
+)
         )
 
         print(
-            f"Added: {name}"
+            f"Added: {file}"
         )
 
     except Exception as e:
 
         print(
-            file,
-            e
+            f"Error processing {file}: {e}"
         )
 
 conn.commit()

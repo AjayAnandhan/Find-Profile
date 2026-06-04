@@ -1,0 +1,1 @@
+RESUME_FOLDER = r"D:\New folder"

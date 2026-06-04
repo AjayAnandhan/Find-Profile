@@ -39,10 +39,6 @@ huggingface/
 # Ollama Cache (optional)
 ollama/
 
-# Generated Files
-files.txt
-structure.txt
-
 # Windows
 Thumbs.db
 Desktop.ini

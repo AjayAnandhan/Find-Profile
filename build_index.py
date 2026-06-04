@@ -5,12 +5,28 @@ import faiss
 
 from docx import Document
 from sentence_transformers import SentenceTransformer
+from config import RESUME_FOLDER
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 model = SentenceTransformer(MODEL_NAME)
 
-resume_folder = "resumes"
+resume_files = []
+
+for root, dirs, files in os.walk(RESUME_FOLDER):
+
+    for file in files:
+
+        if file.lower().endswith(
+            (".pdf", ".docx")
+        ):
+
+            resume_files.append(
+                os.path.join(
+                    root,
+                    file
+                )
+            )
 
 documents = []
 filenames = []
@@ -35,11 +51,10 @@ def read_docx(path):
     )
 
 
-for file in os.listdir(resume_folder):
+for filepath in resume_files:
 
-    filepath = os.path.join(
-        resume_folder,
-        file
+    file = os.path.basename(
+        filepath
     )
 
     try:
@@ -53,13 +68,16 @@ for file in os.listdir(resume_folder):
         else:
             continue
 
+        filenames.append(filepath)
         documents.append(text)
-        filenames.append(file)
 
         print(f"Loaded: {file}")
 
     except Exception as e:
-        print(file, e)
+
+        print(
+            f"Error: {file} - {e}"
+        )
 
 print("\nCreating embeddings...")
 
