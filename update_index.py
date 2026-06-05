@@ -5,6 +5,12 @@ import fitz
 import numpy as np
 import sqlite3
 import re
+import os
+import sys
+
+sys.stdout.reconfigure(
+    encoding="utf-8"
+)
 
 from docx import Document
 from sentence_transformers import SentenceTransformer
@@ -101,7 +107,6 @@ new_files = []
 
 for root, dirs, files in os.walk(RESUME_FOLDER):
     for file in files:
-        print(f"Checking: {file}")
 
         if file.startswith("~"):
             continue
@@ -154,7 +159,7 @@ for filepath in new_files:
 
         else:
             text = read_docx(filepath)
-
+            
         documents.append(text)
 
         name = extract_name(text)
