@@ -9,6 +9,7 @@ import json
 import streamlit.components.v1 as components
 
 from search_engine import search_candidates
+from hybrid_search import search_candidates_hybrid
 import jd_parser
 from settings import load_settings, save_settings
 
@@ -107,7 +108,6 @@ def render_candidate_table(results):
     rows = []
 
     for index, candidate in enumerate(results):
-
         name = safe_text(candidate.get("name", ""))
         email = safe_text(candidate.get("email", ""))
         phone = safe_text(candidate.get("phone", ""))
@@ -469,24 +469,18 @@ def render_candidate_table(results):
         scrolling=False,
     )
 
+
 def get_resume_count():
 
-    if not os.path.exists(
-        "candidate.db"
-    ):
+    if not os.path.exists("candidate.db"):
         return 0
 
     try:
-
-        conn = sqlite3.connect(
-            "candidate.db"
-        )
+        conn = sqlite3.connect("candidate.db")
 
         cursor = conn.cursor()
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM candidates"
-        )
+        cursor.execute("SELECT COUNT(*) FROM candidates")
 
         count = cursor.fetchone()[0]
 
@@ -495,73 +489,43 @@ def get_resume_count():
         return count
 
     except:
-
         return 0
 
-st.sidebar.write(
-    f"📄 Total Resumes: {get_resume_count()}"
-)
 
-if st.sidebar.button(
-    "Update Resume Database"
-):
+st.sidebar.write(f"📄 Total Resumes: {get_resume_count()}")
 
-    with st.spinner(
-        "Updating..."
-    ):
-
+if st.sidebar.button("Update Resume Database"):
+    with st.spinner("Updating..."):
         result = subprocess.run(
-            [
-                sys.executable,
-                "update_index.py"
-            ],
+            [sys.executable, "update_index.py"],
             cwd=os.getcwd(),
             capture_output=True,
-            text=True
+            text=True,
         )
 
-    st.write(
-        f"Return Code: {result.returncode}"
-    )
+    st.write(f"Return Code: {result.returncode}")
 
     if result.stdout:
-
-        st.code(
-            result.stdout
-        )
+        st.code(result.stdout)
 
     if result.stderr:
-
-        st.error(
-            result.stderr
-        )
+        st.error(result.stderr)
 
     new_count = get_resume_count()
-    
-    st.write(
-    "Count after update:",
-    new_count
-)
 
-    st.success(
-        f"Database Updated\n\nCurrent Count: {new_count}"
-    )
+    st.write("Count after update:", new_count)
+
+    st.success(f"Database Updated\n\nCurrent Count: {new_count}")
 
     # st.rerun()
 
 if st.sidebar.button("♻️ Full Rebuild"):
     status = st.empty()
     with st.spinner("Rebuilding database..."):
-        # Delete old files
-
         status.info("🗑️ Deleting old database files...")
 
         for file in ["candidate.db", "resume_index.faiss", "resume_metadata.pkl"]:
             if os.path.exists(file):
-                try:
-                    conn.close()
-                except:
-                    pass
                 os.remove(file)
 
         # Recreate database
@@ -571,7 +535,9 @@ if st.sidebar.button("♻️ Full Rebuild"):
         # Recreate FAISS
         status.info("🧠 Building FAISS index...")
         subprocess.run([sys.executable, "build_index.py"])
-    status.success(f"✅ Full Rebuild Completed\n\n📄 Total Resumes: {count}")
+
+    new_count = get_resume_count()
+    status.success(f"✅ Full Rebuild Completed\n\n📄 Total Resumes: {new_count}")
     st.success("Full Rebuild Completed")
 
     st.rerun()
@@ -591,6 +557,22 @@ if st.sidebar.button("Save Path"):
 
     st.sidebar.success("Saved")
 
+# ---------------------------------------------------------------------------
+# Search mode selector
+# ---------------------------------------------------------------------------
+search_mode = st.sidebar.radio(
+    "Search Mode",
+    options=["hybrid", "semantic", "skills", "tfidf"],
+    index=0,
+    format_func=lambda m: {
+        "semantic": "🔬 Semantic (FAISS + AI)",
+        "skills": "🛠️ Skills Only (No AI)",
+        "hybrid": "⚡ Hybrid (Skills + Semantic)",
+        "tfidf": "📊 TF-IDF (Lightweight)",
+    }.get(m, m),
+    help="Select how candidates are matched to the JD.",
+)
+
 st.title("🔍 Recruiter AI")
 
 jd = st.text_area("Paste Job Description", height=250)
@@ -608,8 +590,7 @@ if jd:
         )
 
         st.markdown(
-            f"Available in skills.json<br>{known_skills_html}",
-            unsafe_allow_html=True
+            f"Available in skills.json<br>{known_skills_html}", unsafe_allow_html=True
         )
 
     else:
@@ -623,22 +604,18 @@ if jd:
 
         st.markdown(
             f"New skills found in JD, not in skills.json<br>{unknown_skills_html}",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         skills_to_add = st.multiselect(
-            "Select new skills to add to skills.json",
-            skill_status["unknown"]
+            "Select new skills to add to skills.json", skill_status["unknown"]
         )
 
         if st.button("Add Selected Skills"):
-
             added_skills = add_skills_to_json(skills_to_add)
 
             if added_skills:
-                st.success(
-                    "Added to skills.json: " + ", ".join(added_skills)
-                )
+                st.success("Added to skills.json: " + ", ".join(added_skills))
                 st.rerun()
 
             else:
@@ -649,30 +626,30 @@ if jd:
 
     if skill_status["all"]:
         required_skills = st.multiselect(
-            "Required skills candidate must have",
-            skill_status["all"]
+            "Required skills candidate must have", skill_status["all"]
         )
 
 if st.button("Search Candidates"):
     if jd:
-        results = search_candidates(jd)
+        # Choose search engine based on selected mode
+        if search_mode == "semantic":
+            results = search_candidates(jd)
+        else:
+            results = search_candidates_hybrid(jd, mode=search_mode)
 
         if required_skills:
-            required_skill_set = {
-                skill.lower()
-                for skill in required_skills
-            }
+            required_skill_set = {skill.lower() for skill in required_skills}
 
             results = [
                 candidate
                 for candidate in results
                 if required_skill_set.issubset(
-                    {
-                        skill.lower()
-                        for skill in candidate.get("matched_skills", [])
-                    }
+                    {skill.lower() for skill in candidate.get("matched_skills", [])}
                 )
             ]
+
+        # Cap results to top 100
+        results = results[:100]
 
         if results:
             if required_skills:
@@ -708,6 +685,10 @@ if st.button("Search Candidates"):
             st.write(f"🛠️ Skill Match: {candidate['skill_score']}%")
 
             st.write(f"📈 Experience Match: {candidate['experience_score']}%")
+
+            tfidf = candidate.get("tfidf_score")
+            if tfidf:
+                st.write(f"📊 TF-IDF Match: {tfidf}%")
 
             st.write("✅ Matched Skills")
 
